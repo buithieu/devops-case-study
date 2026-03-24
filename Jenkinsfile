@@ -83,7 +83,7 @@ pipeline {
               sed -e "s#thieubui/simple-devops-app:latest#${DOCKERHUB_NAMESPACE}/${APP_NAME}:${IMAGE_TAG}#g" \
                 k8s/deployment.yaml > k8s/deployment.rendered.yaml
 
-              kkubectl apply --dry-run=client --validate=false -f k8s/deployment.rendered.yaml
+              kubectl apply --dry-run=client --validate=false -f k8s/deployment.rendered.yaml
               kubectl apply -f k8s/deployment.rendered.yaml
               kubectl apply -f k8s/service.yaml
               kubectl apply -f k8s/ingress.yaml
