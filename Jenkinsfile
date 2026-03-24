@@ -13,6 +13,10 @@ pipeline {
     disableConcurrentBuilds()
   }
 
+  tools {
+    nodejs 'node18'
+  }
+
   stages {
 
     stage('Checkout') {
@@ -22,11 +26,6 @@ pipeline {
     }
 
     stage('Build & Test') {
-      agent {
-        docker {
-          image 'node:18'
-        }
-      }
       parallel {
         stage('Unit Tests') {
           steps {
@@ -75,19 +74,14 @@ pipeline {
             sh '''
               export KUBECONFIG=$KUBECONFIG_FILE
 
-              # render manifest
               sed -e "s#thieubui/simple-devops-app:latest#${DOCKERHUB_NAMESPACE}/${APP_NAME}:${IMAGE_TAG}#g" \
                 k8s/deployment.yaml > k8s/deployment.rendered.yaml
 
-              # validate YAML trước khi apply
               kubectl apply --dry-run=client -f k8s/deployment.rendered.yaml
-
-              # apply
               kubectl apply -f k8s/deployment.rendered.yaml
               kubectl apply -f k8s/service.yaml
               kubectl apply -f k8s/ingress.yaml
 
-              # rollout status (fail fast)
               kubectl rollout status deployment/${APP_NAME}
             '''
           }
@@ -98,11 +92,10 @@ pipeline {
 
   post {
     success {
-      echo "✅ Deployment successful: ${DOCKERHUB_NAMESPACE}/${APP_NAME}:${IMAGE_TAG}"
+      echo "Deployment successful: ${DOCKERHUB_NAMESPACE}/${APP_NAME}:${IMAGE_TAG}"
     }
     failure {
-      echo "❌ Pipeline failed. Rollback with:"
-      echo "kubectl rollout undo deployment/${APP_NAME}"
+      echo "Pipeline failed. Rollback: kubectl rollout undo deployment/${APP_NAME}"
     }
   }
 }
