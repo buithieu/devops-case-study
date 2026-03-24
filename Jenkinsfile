@@ -72,29 +72,23 @@ pipeline {
       }
     }
 
-    stage('Deploy to Kubernetes') {
-      steps {
-        script {
-          withCredentials([file(credentialsId: 'kubeconfig-cred-id', variable: 'KUBECONFIG_FILE')]) {
+ stage('Deploy to Kubernetes (mock)') {
+  steps {
+    sh '''
+      echo "---- Rendered deployment.yaml ----"
+      sed -e "s#thieubui/simple-devops-app:latest#thieubui/simple-devops-app:${IMAGE_TAG}#g" \
+        k8s/deployment.yaml > k8s/deployment.rendered.yaml
 
-            sh """
-              export KUBECONFIG=\$KUBECONFIG_FILE
+      cat k8s/deployment.rendered.yaml
 
-              sed -e "s#thieubui/simple-devops-app:latest#${DOCKERHUB_NAMESPACE}/${APP_NAME}:${IMAGE_TAG}#g" \
-                k8s/deployment.yaml > k8s/deployment.rendered.yaml
-
-              kubectl apply --dry-run=client --validate=false -f k8s/deployment.rendered.yaml
-              kubectl apply -f k8s/deployment.rendered.yaml
-              kubectl apply -f k8s/service.yaml
-              kubectl apply -f k8s/ingress.yaml
-
-              kubectl rollout status deployment/${APP_NAME}
-            """
-          }
-        }
-      }
-    }
+      echo ""
+      echo "If this were a real environment, we would run:"
+      echo "kubectl apply -f k8s/deployment.rendered.yaml"
+      echo "kubectl apply -f k8s/service.yaml"
+      echo "kubectl apply -f k8s/ingress.yaml"
+    '''
   }
+}
 
   post {
     success {
