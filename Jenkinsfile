@@ -33,23 +33,20 @@ pipeline {
           env.PATH = "${nodeHome}/bin:${env.PATH}"
         }
 
-        parallel {
-          stage('Unit Tests') {
-            steps {
+        script {
+          parallel(
+            "Unit Tests": {
               dir('app') {
                 sh 'node -v'
                 sh 'npm -v'
                 sh 'npm ci'
                 sh 'npm test'
               }
-            }
-          }
-
-          stage('Mock Lint') {
-            steps {
+            },
+            "Mock Lint": {
               echo 'Mock lint stage'
             }
-          }
+          )
         }
       }
     }
@@ -101,11 +98,11 @@ pipeline {
 
   post {
     success {
-      echo "Deployment successful: ${env.DOCKERHUB_NAMESPACE}/${env.APP_NAME}:${env.IMAGE_TAG}"
+      echo "Deployment successful: ${DOCKERHUB_NAMESPACE}/${APP_NAME}:${IMAGE_TAG}"
     }
 
     failure {
-      echo "Pipeline failed. Rollback: kubectl rollout undo deployment/${env.APP_NAME}"
+      echo "Pipeline failed. Check logs for details."
     }
   }
 }
