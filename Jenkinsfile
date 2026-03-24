@@ -3,7 +3,7 @@ pipeline {
 
   environment {
     DOCKER_REGISTRY = 'docker.io'
-    DOCKERHUB_NAMESPACE = 'your-dockerhub-username'
+    DOCKERHUB_NAMESPACE = 'thieubui/simple-devops-app'
     APP_NAME = 'simple-devops-app'
     IMAGE_TAG = "v${env.BUILD_NUMBER}"
   }
