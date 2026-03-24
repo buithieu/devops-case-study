@@ -2,7 +2,7 @@ pipeline {
   agent any
 
   environment {
-    DOCKER_REGISTRY = 'docker.io'
+    DOCKER_REGISTRY = 'https://index.docker.io/v1/'
     DOCKERHUB_NAMESPACE = 'thieubui'
     APP_NAME = 'simple-devops-app'
     IMAGE_TAG = "v${env.BUILD_NUMBER}"
