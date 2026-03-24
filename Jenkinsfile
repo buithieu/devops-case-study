@@ -40,7 +40,7 @@ pipeline {
                 sh 'node -v'
                 sh 'npm -v'
                 sh 'npm ci'
-                sh 'npm test'
+                sh 'npm test -- --passWithNoTests'
               }
             },
             "Mock Lint": {
