@@ -26,20 +26,29 @@ pipeline {
     }
 
     stage('Build & Test') {
-      parallel {
-        stage('Unit Tests') {
-          steps {
-            dir('app') {
-              sh 'node -v'
-              sh 'npm -v'
-              sh 'npm ci'
-              sh 'npm test'
+      steps {
+        script {
+          // Inject NodeJS tool into PATH
+          def nodeHome = tool name: 'node18', type: 'nodejs'
+          env.PATH = "${nodeHome}/bin:${env.PATH}"
+        }
+
+        parallel {
+          stage('Unit Tests') {
+            steps {
+              dir('app') {
+                sh 'node -v'
+                sh 'npm -v'
+                sh 'npm ci'
+                sh 'npm test'
+              }
             }
           }
-        }
-        stage('Mock Lint') {
-          steps {
-            echo 'Mock lint stage'
+
+          stage('Mock Lint') {
+            steps {
+              echo 'Mock lint stage'
+            }
           }
         }
       }
@@ -71,8 +80,8 @@ pipeline {
         script {
           withCredentials([file(credentialsId: 'kubeconfig-cred-id', variable: 'KUBECONFIG_FILE')]) {
 
-            sh '''
-              export KUBECONFIG=$KUBECONFIG_FILE
+            sh """
+              export KUBECONFIG=\$KUBECONFIG_FILE
 
               sed -e "s#thieubui/simple-devops-app:latest#${DOCKERHUB_NAMESPACE}/${APP_NAME}:${IMAGE_TAG}#g" \
                 k8s/deployment.yaml > k8s/deployment.rendered.yaml
@@ -83,7 +92,7 @@ pipeline {
               kubectl apply -f k8s/ingress.yaml
 
               kubectl rollout status deployment/${APP_NAME}
-            '''
+            """
           }
         }
       }
@@ -92,10 +101,11 @@ pipeline {
 
   post {
     success {
-      echo "Deployment successful: ${DOCKERHUB_NAMESPACE}/${APP_NAME}:${IMAGE_TAG}"
+      echo "Deployment successful: ${env.DOCKERHUB_NAMESPACE}/${env.APP_NAME}:${env.IMAGE_TAG}"
     }
+
     failure {
-      echo "Pipeline failed. Rollback: kubectl rollout undo deployment/${APP_NAME}"
+      echo "Pipeline failed. Rollback: kubectl rollout undo deployment/${env.APP_NAME}"
     }
   }
 }
