@@ -1,11 +1,12 @@
 pipeline {
-  agent any
+  agent none
 
   environment {
-    DOCKER_REGISTRY    = 'https://index.docker.io/v1/'
+    DOCKER_REGISTRY     = 'https://index.docker.io/v1/'
     DOCKERHUB_NAMESPACE = 'thieubui'
-    APP_NAME           = 'simple-devops-app'
-    IMAGE_TAG          = "v${env.BUILD_NUMBER}"
+    APP_NAME            = 'simple-devops-app'
+    IMAGE_TAG           = "v${BUILD_NUMBER}"
+    IMAGE               = "${DOCKERHUB_NAMESPACE}/${APP_NAME}:${IMAGE_TAG}"
   }
 
   options {
@@ -13,78 +14,79 @@ pipeline {
     disableConcurrentBuilds()
   }
 
-  tools {
-    nodejs 'node18'
-  }
-
   stages {
+
     stage('Checkout') {
+      agent any
       steps {
         checkout scm
       }
     }
 
     stage('Build & Test') {
-      steps {
-        script {
-          // Inject NodeJS tool into PATH
-          def nodeHome = tool name: 'node18', type: 'nodejs'
-          env.PATH = "${nodeHome}/bin:${env.PATH}"
-        }
+      parallel {
 
-        script {
-          parallel(
-            "Unit Tests": {
-              dir('app') {
-                sh 'node -v'
-                sh 'npm -v'
-                sh 'npm ci'
-                sh 'npm test -- --passWithNoTests'
-              }
-            },
-            "Mock Lint": {
-              echo 'Mock lint stage'
+        stage('Unit Test') {
+          agent { label 'nodejs' }
+          steps {
+            dir('app') {
+              sh 'node -v'
+              sh 'npm ci'
+              sh 'npm test -- --passWithNoTests'
             }
-          )
+          }
         }
-      }
-    }
 
-    stage('Docker Build') {
-      steps {
-        script {
-          def img = docker.build("${DOCKERHUB_NAMESPACE}/${APP_NAME}:${IMAGE_TAG}", './app')
-          env.DOCKER_IMAGE = "${DOCKERHUB_NAMESPACE}/${APP_NAME}:${IMAGE_TAG}"
-        }
-      }
-    }
-
-    stage('Docker Push') {
-      steps {
-        script {
-          docker.withRegistry(DOCKER_REGISTRY, 'dockerhub-credentials-id') {
-            def img = docker.image(env.DOCKER_IMAGE)
-            img.push()
-            img.push('latest')
+        stage('Lint') {
+          agent { label 'nodejs' }
+          steps {
+            echo 'Run lint here (mock or eslint)'
           }
         }
       }
     }
 
-    stage('Deploy to Kubernetes (mock)') {
+    stage('Docker Build') {
+      agent { label 'docker' }
+      steps {
+        sh "docker build -t ${IMAGE} ./app"
+      }
+    }
+
+    stage('Docker Push') {
+      agent { label 'docker' }
+      steps {
+        script {
+          docker.withRegistry(DOCKER_REGISTRY, 'dockerhub-credentials-id') {
+            sh """
+              docker push ${IMAGE}
+              docker tag ${IMAGE} ${DOCKERHUB_NAMESPACE}/${APP_NAME}:latest
+              docker push ${DOCKERHUB_NAMESPACE}/${APP_NAME}:latest
+            """
+          }
+        }
+      }
+    }
+
+    stage('Deploy to Kubernetes') {
+      agent { label 'k8s' }
       steps {
         sh """
-          echo '---- Rendered deployment.yaml ----'
-          sed -e 's#thieubui/simple-devops-app:latest#thieubui/simple-devops-app:${IMAGE_TAG}#g' \\
+          echo "Update image version in deployment.yaml"
+
+          sed -e 's#${DOCKERHUB_NAMESPACE}/${APP_NAME}:latest#${IMAGE}#g' \
             k8s/deployment.yaml > k8s/deployment.rendered.yaml
 
-          cat k8s/deployment.rendered.yaml
+          echo "Apply Kubernetes manifests"
 
-          echo ''
-          echo 'If this were a real environment, we would run:'
-          echo 'kubectl apply -f k8s/deployment.rendered.yaml'
-          echo 'kubectl apply -f k8s/service.yaml'
-          echo 'kubectl apply -f k8s/ingress.yaml'
+          kubectl apply -f k8s/deployment.rendered.yaml
+          kubectl apply -f k8s/service.yaml
+          kubectl apply -f k8s/ingress.yaml
+
+          echo "Check rollout status"
+
+          kubectl rollout status deployment/${APP_NAME} --timeout=60s || \
+          kubectl rollout undo deployment/${APP_NAME}
         """
       }
     }
@@ -92,10 +94,22 @@ pipeline {
 
   post {
     success {
-      echo "Deployment successful: ${DOCKERHUB_NAMESPACE}/${APP_NAME}:${IMAGE_TAG}"
+      echo "✅ Deployment successful: ${IMAGE}"
     }
+
     failure {
-      echo "Pipeline failed. Check logs for details."
+      echo "❌ Pipeline failed!"
+
+      // rollback fallback
+      sh """
+        echo "Trigger rollback..."
+        kubectl rollout undo deployment/${APP_NAME} || true
+      """
+    }
+
+    always {
+      echo "Cleaning workspace..."
+      cleanWs()
     }
   }
 }
