@@ -1,13 +1,21 @@
-FROM node:18-alpine
+# Stage 1: Build
+FROM node:18-alpine AS builder
 
-WORKDIR /usr/src/app
+WORKDIR /app
 
 COPY package*.json ./
 RUN npm ci
 
 COPY . .
 
-ENV NODE_ENV=staging
+# Stage 2: Production
+FROM node:18-alpine
+
+WORKDIR /app
+
+COPY --from=builder /app ./
+
+ENV NODE_ENV=production
 
 EXPOSE 3000
 
