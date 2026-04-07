@@ -26,4 +26,4 @@
 - Check pod logs (kubectl logs)
 
 ## 6. Rollback
-kubectl rollout undo deployment/my-app
+kubectl rollout undo deployment/simple-devops-app
