@@ -27,7 +27,7 @@ pipeline {
       parallel {
 
         stage('Unit Test') {
-          agent { label 'nodejs' }
+          agent any
           steps {
             dir('app') {
               sh 'node -v'
@@ -38,23 +38,23 @@ pipeline {
         }
 
         stage('Lint') {
-          agent { label 'nodejs' }
+          agent any
           steps {
-            echo 'Run lint here (mock or eslint)'
+            echo 'Run lint here'
           }
         }
       }
     }
 
     stage('Docker Build') {
-      agent { label 'docker' }
+      agent any
       steps {
         sh "docker build -t ${IMAGE} ./app"
       }
     }
 
     stage('Docker Push') {
-      agent { label 'docker' }
+      agent any
       steps {
         script {
           docker.withRegistry(DOCKER_REGISTRY, 'dockerhub-credentials-id') {
@@ -69,21 +69,15 @@ pipeline {
     }
 
     stage('Deploy to Kubernetes') {
-      agent { label 'k8s' }
+      agent any
       steps {
         sh """
-          echo "Update image version in deployment.yaml"
-
           sed -e 's#${DOCKERHUB_NAMESPACE}/${APP_NAME}:latest#${IMAGE}#g' \
             k8s/deployment.yaml > k8s/deployment.rendered.yaml
-
-          echo "Apply Kubernetes manifests"
 
           kubectl apply -f k8s/deployment.rendered.yaml
           kubectl apply -f k8s/service.yaml
           kubectl apply -f k8s/ingress.yaml
-
-          echo "Check rollout status"
 
           kubectl rollout status deployment/${APP_NAME} --timeout=60s || \
           kubectl rollout undo deployment/${APP_NAME}
@@ -100,16 +94,15 @@ pipeline {
     failure {
       echo "❌ Pipeline failed!"
 
-      // rollback fallback
-      sh """
-        echo "Trigger rollback..."
-        kubectl rollout undo deployment/${APP_NAME} || true
-      """
+      node {
+        sh "kubectl rollout undo deployment/${APP_NAME} || true"
+      }
     }
 
     always {
-      echo "Cleaning workspace..."
-      cleanWs()
+      node {
+        cleanWs()
+      }
     }
   }
 }
