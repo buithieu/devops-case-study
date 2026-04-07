@@ -40,7 +40,7 @@ pipeline {
         stage('Lint') {
           agent any
           steps {
-            echo 'Run lint here'
+            echo 'Run lint here (mock or eslint)'
           }
         }
       }
@@ -49,7 +49,9 @@ pipeline {
     stage('Docker Build') {
       agent any
       steps {
-        sh "docker build -t ${IMAGE} ./app"
+        sh """
+          docker build -t ${IMAGE} ./app
+        """
       }
     }
 
@@ -72,12 +74,18 @@ pipeline {
       agent any
       steps {
         sh """
+          echo "Update image version"
+
           sed -e 's#${DOCKERHUB_NAMESPACE}/${APP_NAME}:latest#${IMAGE}#g' \
             k8s/deployment.yaml > k8s/deployment.rendered.yaml
+
+          echo "Apply manifests"
 
           kubectl apply -f k8s/deployment.rendered.yaml
           kubectl apply -f k8s/service.yaml
           kubectl apply -f k8s/ingress.yaml
+
+          echo "Check rollout"
 
           kubectl rollout status deployment/${APP_NAME} --timeout=60s || \
           kubectl rollout undo deployment/${APP_NAME}
@@ -94,15 +102,15 @@ pipeline {
     failure {
       echo "❌ Pipeline failed!"
 
-      node {
-        sh "kubectl rollout undo deployment/${APP_NAME} || true"
-      }
+      sh """
+        echo "Rollback deployment..."
+        kubectl rollout undo deployment/${APP_NAME} || true
+      """
     }
 
     always {
-      node {
-        cleanWs()
-      }
+      echo "Cleaning workspace..."
+      cleanWs()
     }
   }
 }
